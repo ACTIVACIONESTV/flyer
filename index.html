@@ -139,11 +139,11 @@
   <div class="bar">
     <h2>Mis clientes</h2>
     <div class="grow"></div>
-    <button class="btn btn-ghost" id="import-btn">⬆ Importar Excel</button>
-    <button class="btn btn-ghost" id="export-btn">⬇ Exportar Excel</button>
+    <button class="btn btn-ghost" id="import-btn">⬆ Recuperar</button>
+    <button class="btn btn-ghost" id="export-btn">⬇ Respaldar</button>
     <button class="btn btn-primary" id="add-btn">+ Nuevo cliente</button>
   </div>
-  <input type="file" id="import-file" accept=".xlsx,.xls,.csv" class="hidden">
+  <input type="file" id="import-file" class="hidden">
 
   <div id="clist"></div>
 </main>
@@ -387,10 +387,20 @@ $('#export-btn').onclick=()=>{
 $('#import-btn').onclick=()=>$('#import-file').click();
 $('#import-file').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
+  // si es un excel binario viejo, avisar claro
+  if(/\.(xlsx|xls)$/i.test(f.name)){
+    toast('Usa el archivo .csv que exporta esta app, no un Excel viejo');
+    e.target.value='';return;
+  }
   let text;
-  try{ text=await f.text(); }catch(err){ toast('No se pudo leer el archivo'); return; }
+  try{ text=await f.text(); }catch(err){ toast('No se pudo leer el archivo'); e.target.value='';return; }
   text=text.replace(/^\uFEFF/,'').trim();
-  if(!text){toast('El archivo está vacío');return;}
+  if(!text){toast('El archivo está vacío');e.target.value='';return;}
+  // detectar si es binario (no es un CSV de texto)
+  if(text.indexOf('\u0000')>=0 || /PK\u0003\u0004/.test(text.slice(0,4))){
+    toast('Ese archivo no es un respaldo válido. Usa el .csv de esta app');
+    e.target.value='';return;
+  }
   const rows=text.split(/\r?\n/).map(parseCsvLine);
   const head=rows.shift().map(h=>h.trim().toLowerCase());
   const idx=name=>head.findIndex(h=>h===name);
@@ -399,7 +409,7 @@ $('#import-file').onchange=async e=>{
   const iAmount=idx('mensualidad');
   const iPeriod=idx('periodo');
   const iLast=idx('ultimopago');
-  if(iPage<0){toast('El archivo no tiene la columna Página');return;}
+  if(iPage<0){toast('No reconozco las columnas. Usa el .csv que exporta esta app');e.target.value='';return;}
   let added=0;
   rows.forEach(r=>{
     if(!r.length||!r[iPage])return;
@@ -417,7 +427,8 @@ $('#import-file').onchange=async e=>{
     added++;
   });
   await Store.set('clients_panel',clients);render();
-  toast(added+' clientes recuperados ✓');
+  if(added===0) toast('No se agregó nada (ya existían o archivo vacío)');
+  else toast(added+' clientes recuperados ✓');
   e.target.value='';
 };
 function parseCsvLine(line){
